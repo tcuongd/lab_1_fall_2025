@@ -10,8 +10,8 @@ import signal
 JOINT_NAME = "leg_front_l_1"
 ####
 ####
-KP = 0.0  # YOUR KP VALUE
-KD = 0.0  # YOUR KD VALUE
+KP = 2.0  # YOUR KP VALUE
+KD = 0.3  # YOUR KD VALUE
 ####
 ####
 LOOP_RATE = 200  # Hz
@@ -42,19 +42,19 @@ class JointStateSubscriber(Node):
         self.create_timer(1.0 / LOOP_RATE, self.control_loop)
 
     def get_target_joint_info(self):
-        ####
-        #### YOUR CODE HERE
-        ####
+        return self.target_joint_pos, self.target_joint_vel
 
-        # target_joint_pos, target_joint_vel
-        return 0, 0
+    def calculate_torque_bang_bang(self, joint_pos, joint_vel, target_joint_pos, target_joint_vel):
+        if (target_joint_pos  - joint_pos) > 0:
+            return MAX_TORQUE
+        elif (target_joint_pos - joint_pos) < 0:
+            return -MAX_TORQUE
+        else:
+            return 0.0
 
     def calculate_torque(self, joint_pos, joint_vel, target_joint_pos, target_joint_vel):
-        ####
-        #### YOUR CODE HERE
-        ####
-        
-        return 0.0
+        return KP * (target_joint_pos  - joint_pos) + KD * (target_joint_vel - joint_vel)
+
 
     def print_info(self):
         """Print joint information every 2 control loops"""
@@ -66,7 +66,9 @@ class JointStateSubscriber(Node):
         self.print_counter %= 2
 
     def get_joint_info(self, msg):
-        """Callback function to process incoming JointState messages"""
+        """
+        Saves the position and velocity of the target joint JOINT_NAME to member vars `joint_pos` and `joint_vel`.
+        """
         joint_index = msg.name.index(JOINT_NAME)
         joint_pos = msg.position[joint_index]
         joint_vel = msg.velocity[joint_index]
@@ -86,6 +88,9 @@ class JointStateSubscriber(Node):
         self.publish_torque(self.calculated_torque)
 
     def publish_torque(self, torque=0.0):
+        """
+        Clips the provided target torque to `MAX_TORQUE` and publishes it, with values for the PD controller.
+        """
         # Create a Float64MultiArray message with zero kp and kd values
         command_msg = Float64MultiArray()
         torque = np.clip(torque, -MAX_TORQUE, MAX_TORQUE)
@@ -105,14 +110,14 @@ def main(args=None):
     def _handle_sigint(sig, frame):
         joint_state_subscriber.get_logger().info("SIGINT received: sending zero torque and shutting down...")
         joint_state_subscriber.publish_torque(0.0)
-        time.sleep(0.1) 
+        time.sleep(0.1)
         joint_state_subscriber.publish_torque(0.0)
         rclpy.shutdown()
 
     signal.signal(signal.SIGINT, _handle_sigint)
 
     rclpy.spin(joint_state_subscriber)
-  
+
 
 if __name__ == "__main__":
     main()
